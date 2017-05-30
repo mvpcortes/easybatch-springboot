@@ -17,7 +17,7 @@ import org.easybatch.core.record.Record;
 public class RecordReaderToStream {
     
     public static <T extends Record> Stream<T> toStream(RecordReader recordReader){
-        Iterable<T> iterable = new IterableRecordReader<>(recordReader);
+        Iterable<T> iterable = new RecordReaderIterable<>(recordReader);
         return StreamSupport.stream(iterable.spliterator(), false);
     }
 }

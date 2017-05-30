@@ -18,6 +18,7 @@ import org.junit.Test;
 import org.junit.rules.ExpectedException;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.spy;
 
 /**
  *
@@ -61,7 +62,7 @@ public class MergeRecordReaderTest extends MergeRecordReader {
         doThrow(new Exception("teste", null)).when(reader2).open();
 
         thrown.expect(IllegalStateException.class);
-        thrown.expectMessage("Cannot open next reader 1");
+        thrown.expectMessage("Cannot open reader 1");
 
         MergeRecordReader mr = new MergeRecordReader(reader1, reader2, reader3);
         mr.open();
@@ -69,13 +70,13 @@ public class MergeRecordReaderTest extends MergeRecordReader {
     }
 
     @Test
-    public void quando_tenta_pegar_nextReader_gerando_falha_no_close_entao_IllegalStateException() throws Exception {
+    public void quando_call_readRecord_but_fail_on_close_then_IllegalStateException() throws Exception {
 
         reader1 = mock(RecordReader.class);
-        doThrow(new Exception("teste", null)).when(reader1).close();
+        doThrow(new Exception("test", null)).when(reader1).close();
 
         thrown.expect(IllegalStateException.class);
-        thrown.expectMessage("Cannot open next reader 0");
+        thrown.expectMessage("Cannot close reader 0");
 
         MergeRecordReader mr = new MergeRecordReader(reader1, reader2, reader3);
         mr.open();
@@ -142,4 +143,57 @@ public class MergeRecordReaderTest extends MergeRecordReader {
         assertThat(mr.readRecord().getPayload(), is(equalTo("linhas")));
         assertThat(mr.readRecord(), is(nullValue()));
     }
+
+    @Test
+    public void when_recordreader_nextRecord_but_not_open_then_throw_exception() throws Exception {
+        thrown.expect(IllegalStateException.class);
+        thrown.expectMessage("MergeRecordReader does not open");
+        MergeRecordReader mr = new MergeRecordReader(reader1, reader2);
+        mr.readRecord();
+    }
+
+    @Test
+    public void when_call_readRecord_but_fail_on_close_last_reader_then_IllegalStateException() throws Exception {
+
+        reader2 = spy(reader2);
+        doThrow(new RuntimeException("test", null)).when(reader2).close();
+
+        thrown.expect(IllegalStateException.class);
+        thrown.expectMessage("Cannot close reader 1");
+
+        MergeRecordReader mr = new MergeRecordReader(reader1, reader2);
+        mr.open();
+        //reader1
+        Record x = mr.readRecord();
+        x = mr.readRecord();
+        x = mr.readRecord();
+
+        //reader2
+        x = mr.readRecord();
+        x = mr.readRecord();
+        x = mr.readRecord();
+        x = mr.readRecord();
+
+        assertThat(mr.readRecord(), is(nullValue()));
+
+    }
+
+    @Test
+    public void when_call_close_but_fail_on_close_of_reader1_then_IllegalStateException() throws Exception {
+
+        reader1 = spy(reader1);
+        doThrow(new RuntimeException("test", null)).when(reader1).close();
+
+        thrown.expect(IllegalStateException.class);
+        thrown.expectMessage("Cannot close actual reader: 0");
+
+        MergeRecordReader mr = new MergeRecordReader(reader1, reader2);
+        mr.open();
+        //reader1
+        Record x = mr.readRecord();
+        
+        mr.close();
+
+    }
+
 }

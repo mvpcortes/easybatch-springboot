@@ -8,10 +8,10 @@ package com.github.marcosvpcortes.ebsb.reader;
 import java.io.IOException;
 import java.util.Arrays;
 import java.util.List;
+import java.util.stream.IntStream;
 import org.easybatch.core.reader.RecordReader;
 import org.easybatch.core.record.Record;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import org.springframework.util.Assert;
 
 /**
  *
@@ -19,7 +19,6 @@ import org.slf4j.LoggerFactory;
  */
 public class MergeRecordReader implements RecordReader {
 
-    private static final Logger LOGGER = LoggerFactory.getLogger(MergeRecordReader.class);
     private final List<RecordReader> listReaders;
     private int posReader;
 
@@ -28,7 +27,10 @@ public class MergeRecordReader implements RecordReader {
     }
 
     public MergeRecordReader(List<RecordReader> rrs) {
+        IntStream.range(0, rrs.size())
+                .forEach(i -> Assert.notNull(rrs.get(i), String.format("The recordReader arg %d cannot be null", i)));
         listReaders = rrs;
+        posReader = -1;
     }
 
     @Override
@@ -44,22 +46,29 @@ public class MergeRecordReader implements RecordReader {
     }
 
     protected void nextReader() {
-        try {
-            if (posReader < listReaders.size()) {
+        if (posReader < listReaders.size()) {
+            try {
                 getActualReader(posReader).close();
-                posReader++;
-                if (posReader < listReaders.size()) {
+            } catch (Exception e) {
+                throw new IllegalStateException(String.format("Cannot close reader %d", posReader), e);
+            }
+            posReader++;
+            if (posReader < listReaders.size()) {
+                try {
                     getActualReader(posReader).open();
+                } catch (Exception e) {
+                    throw new IllegalStateException(String.format("Cannot open reader %d", posReader), e);
                 }
             }
-
-        } catch (Exception ex) {
-            throw new IllegalStateException(String.format("Cannot open next reader %d", posReader), ex);
         }
     }
 
     @Override
     public Record readRecord() throws Exception {
+        if (posReader < 0) {
+            throw new IllegalStateException("MergeRecordReader does not open");
+        }
+
         if (posReader < listReaders.size()) {
             Record record = getActualReader(posReader).readRecord();
             if (record != null) {
@@ -75,16 +84,16 @@ public class MergeRecordReader implements RecordReader {
 
     @Override
     public void close() throws Exception {
-        int i = 0;
-        for (RecordReader rr : listReaders) {
-
+        if (posReader < listReaders.size()) {
             try {
-                rr.close();
+
+                getActualReader(posReader).close();//close actual reader
             } catch (Exception e) {
-                throw new IOException(String.format("Cannot close reader %d", i), e);
+                throw new IllegalStateException(String.format("Cannot close actual reader: %d(%s)", posReader, getActualReader(posReader).toString()), e);
             }
-            i++;
         }
+        //put posReader in the end of list to represent the close state
+        posReader = listReaders.size();
     }
 
     private RecordReader getActualReader(int posReader) {
